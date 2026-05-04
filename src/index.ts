@@ -12,7 +12,8 @@ import { featuresRouter } from "./features/router";
 import { testCasesRouter } from "./testCases/router";
 import { testRunsRouter } from "./testRuns/router";
 import { authRouter } from "./auth/router";
-import { requireAuth } from "./auth/middleware";
+import { requireAuth, requireProjectAccess, requireFeatureInProject } from "./auth/middleware";
+import { handleTestCaseFromPrompt } from "./ai/testCaseFromPrompt";
 import { schedulesRouter } from "./schedules/router";
 import { startScheduleRunner } from "./schedules/worker";
 import { reportsRouter } from "./reports/router";
@@ -30,8 +31,9 @@ if (process.env.NODE_ENV !== "production" && geminiKey) {
 }
 
 const TESTFLOW_SYSTEM_INSTRUCTION =
-  "Bạn là trợ lý QA trong TestFlow AI (kiểm thử tự động, Puppeteer, test case). " +
-  "Trả lời súc tích, có cấu trúc khi cần; ưu tiên tiếng Việt nếu người dùng dùng tiếng Việt.";
+  "Bạn là trợ lý QA trong TestFlow AI (kiểm thử tự động Puppeteer: navigate, click_selector, click_text, type, wait). " +
+  "Ngữ cảnh kèm theo là test case và các bước hiện tại — gợi ý phải khớp engine (selector CSS, matchText cho nút theo chữ). " +
+  "Trả lời súc tích, có cấu trúc (gạch đầu dòng / bước) khi cần; ưu tiên tiếng Việt nếu người dùng dùng tiếng Việt.";
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -49,6 +51,8 @@ app.get("/", (_req, res) => {
     },
     aiHealth: "/api/ai/health",
     aiChat: "POST /api/ai/chat (Bearer)",
+    aiTestCaseFromPrompt:
+      "POST /api/projects/:projectId/features/:featureId/ai/test-case-from-prompt (Bearer) body: mode preview|apply",
     aiFill: "POST /api/test-cases/:testCaseId/ai/fill (Bearer)",
     testCaseActions: "GET/POST /api/test-cases/:testCaseId/actions (Bearer)",
     testCaseRun: "POST /api/test-cases/:testCaseId/run (Bearer)",
@@ -74,6 +78,14 @@ app.use("/api/projects/:projectId/features/:featureId/test-cases", testCasesRout
 app.use("/api", testRunsRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/schedules", schedulesRouter);
+
+app.post(
+  "/api/projects/:projectId/features/:featureId/ai/test-case-from-prompt",
+  requireAuth,
+  requireProjectAccess,
+  requireFeatureInProject,
+  handleTestCaseFromPrompt,
+);
 
 app.post("/api/ai/chat", requireAuth, async (req, res) => {
   try {
@@ -198,6 +210,9 @@ void (async () => {
     console.log(`  GET  http://localhost:${PORT}/health`);
     console.log(`  GET  http://localhost:${PORT}/api/ai/health`);
     console.log(`  POST http://localhost:${PORT}/api/ai/chat`);
+    console.log(
+      `  POST http://localhost:${PORT}/api/projects/:projectId/features/:featureId/ai/test-case-from-prompt`,
+    );
     console.log(`  POST http://localhost:${PORT}/api/test-cases/:id/ai/fill`);
     console.log(`  GET/POST http://localhost:${PORT}/api/test-cases/:id/actions`);
     console.log(`  POST http://localhost:${PORT}/api/test-cases/:id/run`);
