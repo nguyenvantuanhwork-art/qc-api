@@ -9,9 +9,21 @@ export function validateConfig(kind: ActionKind, config: ActionConfig): string |
       return config.selector?.trim() ? null : "click_selector cần config.selector";
     case "click_text":
       return config.matchText?.trim() ? null : "click_text cần config.matchText";
+    case "click_id":
+      return config.id?.trim() ? null : "click_id cần config.id";
+    case "click_name":
+      return config.name?.trim() ? null : "click_name cần config.name";
     case "type":
       if (!config.selector?.trim()) return "type cần config.selector";
       if (config.value === undefined || config.value === null) return "type cần config.value";
+      return null;
+    case "type_id":
+      if (!config.id?.trim()) return "type_id cần config.id";
+      if (config.value === undefined || config.value === null) return "type_id cần config.value";
+      return null;
+    case "type_name":
+      if (!config.name?.trim()) return "type_name cần config.name";
+      if (config.value === undefined || config.value === null) return "type_name cần config.value";
       return null;
     case "wait":
       if (config.waitMs === undefined || config.waitMs === null) return "wait cần config.waitMs";

@@ -5,7 +5,7 @@ import { handleAiFillTypeValues } from "../ai/fillAction";
 import { getPool } from "../db";
 import { requireAuth } from "../auth/middleware";
 import { assertTestCaseAccess } from "../auth/access";
-import { executeTestCaseRun } from "./executeRun";
+import { executeTestCaseRun, requestCancelActiveRun } from "./executeRun";
 
 type TcParams = { testCaseId: string; actionId?: string };
 
@@ -43,19 +43,20 @@ testCaseRouter.post("/actions", async (req, res) => {
     expectation?: unknown;
   };
 
-  const kind = body.kind as ActionKind;
   const config = (body.config ?? {}) as ActionConfig;
   const name = typeof body.name === "string" ? body.name : "";
   const order = typeof body.order === "number" ? body.order : undefined;
   const enabled = typeof body.enabled === "boolean" ? body.enabled : undefined;
   const expectation = typeof body.expectation === "string" ? body.expectation : undefined;
 
-  if (!kind) {
-    res.status(400).json({ ok: false, error: "Thiếu kind" });
-    return;
-  }
-
-  const { action, error } = await createAction(testCaseId, { name, kind, order, enabled, config, expectation });
+  const { action, error } = await createAction(testCaseId, {
+    name,
+    kind: body.kind as ActionKind,
+    order,
+    enabled,
+    config,
+    expectation,
+  });
   if (error || !action) {
     res.status(400).json({ ok: false, error: error ?? "Tạo thất bại" });
     return;
@@ -110,6 +111,16 @@ testCaseRouter.put("/actions-order", async (req, res) => {
 
 testCaseRouter.post("/ai/fill", handleAiFillTypeValues);
 
+testCaseRouter.post("/run/cancel", async (req, res) => {
+  const { testCaseId } = req.params as TcParams;
+  const stopped = requestCancelActiveRun(testCaseId);
+  if (!stopped) {
+    res.status(404).json({ ok: false, error: "Không có tiến trình đang chạy." });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 testCaseRouter.post("/run", async (req, res) => {
   const { testCaseId } = req.params as TcParams;
   const ex = await executeTestCaseRun(testCaseId, req.auth?.userId ?? null);
@@ -119,6 +130,10 @@ testCaseRouter.post("/run", async (req, res) => {
   }
   if (ex.error === "Chưa có hành động nào để chạy.") {
     res.status(400).json({ ok: false, error: ex.error });
+    return;
+  }
+  if (ex.result?.cancelled) {
+    res.json({ ok: false, cancelled: true, result: ex.result });
     return;
   }
   if (!ex.ok || !ex.result) {

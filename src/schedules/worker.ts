@@ -34,7 +34,7 @@ async function finalizeScheduleRun(
 ): Promise<void> {
   const triggeredBy = row.created_by_user_id?.trim() || null;
   const oneShot = isOneShotCronExpression(row.cron_expression);
-  const ex = await executeTestCaseRun(row.test_case_id, triggeredBy);
+  const ex = await executeTestCaseRun(row.test_case_id, triggeredBy, { source: "schedule" });
   const runErr = ex.ok ? "" : (ex.error ?? "Lỗi chạy");
   console.log(
     `[schedules:worker] schedule=${row.id} testCase=${row.test_case_id} ok=${ex.ok}${runErr ? ` err=${runErr.slice(0, 120)}` : ""}`,

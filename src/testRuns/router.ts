@@ -2,11 +2,27 @@ import { Router } from "express";
 import { getPool } from "../db";
 import { requireAuth } from "../auth/middleware";
 import { assertTestCaseAccess } from "../auth/access";
-import { getTestRun, listGlobalTestRuns, listTestRuns } from "./store";
+import { enrichActiveRunSnapshots, getTestRun, listGlobalTestRuns, listTestRuns } from "./store";
+import { runResultForPublicApi } from "./screenshotUrls";
+import type { RunTestCaseResult } from "../testCaseActions/types";
+import { listActiveRunPublicSnapshots } from "../testCaseActions/executeRun";
 
 export const testRunsRouter = Router();
 
 testRunsRouter.use(requireAuth);
+
+testRunsRouter.get("/runs/active", async (req, res) => {
+  const auth = req.auth!;
+  const pool = getPool();
+  const snapshots = listActiveRunPublicSnapshots();
+  const enriched = await enrichActiveRunSnapshots(snapshots);
+  const runs = [];
+  for (const row of enriched) {
+    const allowed = await assertTestCaseAccess(pool, auth, row.testCaseId);
+    if (allowed) runs.push(row);
+  }
+  res.json({ ok: true, runs });
+});
 
 testRunsRouter.get("/run-history", async (req, res) => {
   const auth = req.auth!;
@@ -56,6 +72,15 @@ testRunsRouter.get("/test-runs/:runId", async (req, res) => {
     res.status(404).json({ ok: false, error: "Không tìm thấy lịch sử chạy" });
     return;
   }
-  res.json({ ok: true, run });
+  const raw = run.result as RunTestCaseResult | undefined | null;
+  let publicResult: unknown = run.result;
+  if (raw && typeof raw === "object" && "steps" in raw && Array.isArray((raw as RunTestCaseResult).steps)) {
+    try {
+      publicResult = await runResultForPublicApi(raw as RunTestCaseResult);
+    } catch (e) {
+      console.error("[test-runs:get presign]", e instanceof Error ? e.message : e);
+    }
+  }
+  res.json({ ok: true, run: { ...run, result: publicResult } });
 });
 

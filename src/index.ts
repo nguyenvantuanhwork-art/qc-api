@@ -56,6 +56,8 @@ app.get("/", (_req, res) => {
     aiFill: "POST /api/test-cases/:testCaseId/ai/fill (Bearer)",
     testCaseActions: "GET/POST /api/test-cases/:testCaseId/actions (Bearer)",
     testCaseRun: "POST /api/test-cases/:testCaseId/run (Bearer)",
+    testCaseRunCancel: "POST /api/test-cases/:testCaseId/run/cancel (Bearer)",
+    runsActive: "GET /api/runs/active (Bearer)",
     projects: "/api/projects (Bearer)",
     projectMembers:
       "GET/POST /api/projects/:projectId/members, DELETE /api/projects/:projectId/members/:userId",

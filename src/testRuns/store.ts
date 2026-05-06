@@ -1,5 +1,6 @@
 import { getPool } from "../db";
 import { notifyTestRunFinished } from "../notifications/store";
+import type { ActiveRunPublicSnapshot } from "../testCaseActions/activeRunRegistry";
 import type { GlobalTestRunListRow, TestRunDetail, TestRunRow } from "./types";
 
 type RunResultShape = {
@@ -76,6 +77,14 @@ export async function insertTestRun(
     });
   }
   return mapped;
+}
+
+export async function updateTestRunResult(runId: string, result: unknown): Promise<void> {
+  const pool = getPool();
+  await pool.query(`update test_runs set result = $1::jsonb where id = $2::uuid`, [
+    JSON.stringify(result ?? {}),
+    runId,
+  ]);
 }
 
 export async function listTestRuns(testCaseId: string, limit = 30): Promise<TestRunRow[]> {
@@ -160,8 +169,13 @@ export async function listGlobalTestRuns(
       exists (
         select 1
         from jsonb_array_elements(coalesce(tr.result->'steps', '[]'::jsonb)) as step
-        where (step->>'screenshotBase64') is not null
+        where (
+          (step->>'screenshotObjectKey') is not null
+          and length(trim(step->>'screenshotObjectKey')) > 0
+        ) or (
+          (step->>'screenshotBase64') is not null
           and length(step->>'screenshotBase64') > 0
+        )
       ) as "hasScreenshots"
     from test_runs tr
     inner join test_cases tc on tc.id = tr.test_case_id
@@ -241,5 +255,53 @@ export async function getTestRun(runId: string): Promise<TestRunDetail | null> {
     triggeredByUsername: r.triggered_by_username,
     result: r.result,
   };
+}
+
+export type EnrichedActiveRunRow = ActiveRunPublicSnapshot & {
+  testCaseName: string | null;
+  testCaseKey: string | null;
+  featureId: string | null;
+  featureName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+};
+
+export async function enrichActiveRunSnapshots(rows: ActiveRunPublicSnapshot[]): Promise<EnrichedActiveRunRow[]> {
+  if (rows.length === 0) return [];
+  const pool = getPool();
+  const ids = rows.map((r) => r.testCaseId);
+  const q = await pool.query<{
+    test_case_id: string;
+    test_case_name: string | null;
+    test_case_key: string | null;
+    feature_id: string | null;
+    feature_name: string | null;
+    project_id: string | null;
+    project_name: string | null;
+  }>(
+    `
+    select tc.id::text as test_case_id, tc.name as test_case_name, tc.key as test_case_key,
+           f.id::text as feature_id, f.name as feature_name,
+           p.id::text as project_id, p.name as project_name
+    from test_cases tc
+    left join features f on f.id = tc.feature_id
+    left join projects p on p.id = f.project_id
+    where tc.id = any($1::text[])
+  `,
+    [ids],
+  );
+  const meta = new Map(q.rows.map((r) => [r.test_case_id, r]));
+  return rows.map((s) => {
+    const m = meta.get(s.testCaseId);
+    return {
+      ...s,
+      testCaseName: m?.test_case_name ?? null,
+      testCaseKey: m?.test_case_key ?? null,
+      featureId: m?.feature_id ?? null,
+      featureName: m?.feature_name ?? null,
+      projectId: m?.project_id ?? null,
+      projectName: m?.project_name ?? null,
+    };
+  });
 }
 

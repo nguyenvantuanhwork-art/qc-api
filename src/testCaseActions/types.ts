@@ -1,4 +1,13 @@
-export type ActionKind = "navigate" | "click_selector" | "click_text" | "type" | "wait";
+export type ActionKind =
+  | "navigate"
+  | "click_selector"
+  | "click_text"
+  | "click_id"
+  | "click_name"
+  | "type"
+  | "type_id"
+  | "type_name"
+  | "wait";
 
 export interface ActionConfig {
   /** navigate */
@@ -7,6 +16,10 @@ export interface ActionConfig {
   selector?: string;
   /** click_text — tìm nút/link chứa chuỗi (không phân biệt hoa thường) */
   matchText?: string;
+  /** click_id, type_id */
+  id?: string;
+  /** click_name, type_name (DOM attribute name="...") */
+  name?: string;
   /** type */
   value?: string;
   /** wait (ms) */
@@ -36,6 +49,10 @@ export interface RunStepResult {
   status: StepStatus;
   message?: string;
   url?: string;
+  /** Chỉ lưu trong DB sau khi upload R2 thành công (API không trả field này cho client). */
+  screenshotObjectKey?: string;
+  /** Chỉ gắn khi trả response HTTP (presigned GET). */
+  screenshotUrl?: string;
   screenshotBase64?: string;
   durationMs: number;
 }
@@ -49,4 +66,6 @@ export interface RunTestCaseResult {
   overallStatus: "passed" | "failed";
   steps: RunStepResult[];
   error?: string;
+  /** Đặt khi người dùng gọi hủy — overallStatus vẫn failed để khớp DB. */
+  cancelled?: boolean;
 }

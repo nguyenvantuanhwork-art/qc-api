@@ -206,6 +206,26 @@ export async function migrate(): Promise<void> {
   await pool.query(
     `create index if not exists idx_test_actions_case_order on test_actions(test_case_id, order_index);`,
   );
+
+  // Một số DB production từng thêm CHECK trên `test_actions.kind` chỉ cho các kind cũ —
+  // khiến insert/update `click_id`, `type_name`, … bị lỗi. Gỡ mọi CHECK có đề cập `kind`.
+  await pool.query(`
+    do $$
+    declare r record;
+    begin
+      for r in
+        select c.conname
+        from pg_constraint c
+        join pg_class t on c.conrelid = t.oid
+        where t.relname = 'test_actions'
+          and c.contype = 'c'
+          and pg_get_constraintdef(c.oid) ilike '%kind%'
+      loop
+        execute format('alter table test_actions drop constraint if exists %I', r.conname);
+      end loop;
+    end $$;
+  `);
+
   await pool.query(`create index if not exists idx_features_project on features(project_id);`);
   await pool.query(`create index if not exists idx_test_cases_feature on test_cases(feature_id);`);
 
