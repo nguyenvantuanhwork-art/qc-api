@@ -4,9 +4,11 @@ export type ActionKind =
   | "click_text"
   | "click_id"
   | "click_name"
+  | "click_xpath"
   | "type"
   | "type_id"
   | "type_name"
+  | "type_xpath"
   | "wait";
 
 export interface ActionConfig {
@@ -14,6 +16,8 @@ export interface ActionConfig {
   url?: string;
   /** click_selector, type */
   selector?: string;
+  /** click_xpath, type_xpath */
+  xpath?: string;
   /** click_text — tìm nút/link chứa chuỗi (không phân biệt hoa thường) */
   matchText?: string;
   /** click_id, type_id */

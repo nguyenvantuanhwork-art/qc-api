@@ -55,6 +55,30 @@ export async function migrate(): Promise<void> {
   `);
   await pool.query(`create index if not exists idx_project_members_user on project_members(user_id);`);
 
+  // ---------- project_groups ----------
+  await pool.query(`
+    create table if not exists project_groups (
+      id uuid primary key default gen_random_uuid(),
+      project_id uuid not null references projects(id) on delete cascade,
+      name text not null,
+      description text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique (project_id, name)
+    );
+  `);
+  await pool.query(`create index if not exists idx_project_groups_project on project_groups(project_id);`);
+
+  await pool.query(`
+    create table if not exists project_group_members (
+      group_id uuid not null references project_groups(id) on delete cascade,
+      user_id uuid not null references users(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (group_id, user_id)
+    );
+  `);
+  await pool.query(`create index if not exists idx_project_group_members_user on project_group_members(user_id);`);
+
   // ---------- user_notifications (in-app) ----------
   await pool.query(`
     create table if not exists user_notifications (
@@ -73,6 +97,18 @@ export async function migrate(): Promise<void> {
   );
   await pool.query(
     `create index if not exists idx_user_notifications_unread on user_notifications(user_id) where read_at is null;`,
+  );
+
+  // ---------- Cài đặt toàn cục (một hàng) ----------
+  await pool.query(`
+    create table if not exists app_settings (
+      id smallint primary key check (id = 1),
+      registration_open boolean not null default true,
+      maintenance_banner text not null default ''
+    );
+  `);
+  await pool.query(
+    `insert into app_settings (id, registration_open, maintenance_banner) values (1, true, '') on conflict (id) do nothing`,
   );
 
   // ---------- features ----------
@@ -158,6 +194,52 @@ export async function migrate(): Promise<void> {
     end $$;
   `);
 
+  // ---------- project_group_assignments ----------
+  // (đặt sau features + test_cases để tránh FK fail)
+  await pool.query(`
+    create table if not exists project_group_feature_assignments (
+      group_id uuid not null references project_groups(id) on delete cascade,
+      feature_id uuid not null references features(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (group_id, feature_id)
+    );
+  `);
+  await pool.query(
+    `create index if not exists idx_project_group_feature_assignments_group on project_group_feature_assignments(group_id);`,
+  );
+  await pool.query(
+    `create index if not exists idx_project_group_feature_assignments_feature on project_group_feature_assignments(feature_id);`,
+  );
+
+  await pool.query(`
+    create table if not exists project_group_test_case_assignments (
+      group_id uuid not null references project_groups(id) on delete cascade,
+      test_case_id text not null references test_cases(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (group_id, test_case_id)
+    );
+  `);
+  await pool.query(
+    `create index if not exists idx_project_group_test_case_assignments_group on project_group_test_case_assignments(group_id);`,
+  );
+  await pool.query(
+    `create index if not exists idx_project_group_test_case_assignments_tc on project_group_test_case_assignments(test_case_id);`,
+  );
+
+  await pool.query(`
+    create table if not exists project_group_tc_progress (
+      group_id uuid not null references project_groups(id) on delete cascade,
+      test_case_id text not null references test_cases(id) on delete cascade,
+      completed boolean not null default false,
+      note text not null default '',
+      updated_at timestamptz not null default now(),
+      primary key (group_id, test_case_id)
+    );
+  `);
+  await pool.query(
+    `create index if not exists idx_project_group_tc_progress_tc on project_group_tc_progress(test_case_id);`,
+  );
+
   // ---------- test_actions ----------
   await pool.query(`
     create table if not exists test_actions (
@@ -228,6 +310,28 @@ export async function migrate(): Promise<void> {
 
   await pool.query(`create index if not exists idx_features_project on features(project_id);`);
   await pool.query(`create index if not exists idx_test_cases_feature on test_cases(feature_id);`);
+
+  // ---------- Gói thao tác: tiên quyết + metadata đóng gói ----------
+  await pool.query(`alter table test_cases add column if not exists is_operation_package boolean not null default false;`);
+  await pool.query(
+    `alter table test_cases add column if not exists packed_by_user_id uuid references users(id) on delete set null;`,
+  );
+  await pool.query(`alter table test_cases add column if not exists packed_at timestamptz;`);
+  await pool.query(`alter table test_cases add column if not exists packed_from_test_case_id text;`);
+
+  await pool.query(`
+    create table if not exists test_case_prerequisites (
+      host_test_case_id text not null references test_cases(id) on delete cascade,
+      prerequisite_test_case_id text not null references test_cases(id) on delete cascade,
+      order_index integer not null,
+      primary key (host_test_case_id, order_index),
+      constraint test_case_prerequisites_host_prereq_unique unique (host_test_case_id, prerequisite_test_case_id),
+      constraint test_case_prerequisites_no_self check (host_test_case_id <> prerequisite_test_case_id)
+    );
+  `);
+  await pool.query(
+    `create index if not exists idx_test_case_prerequisites_prereq on test_case_prerequisites(prerequisite_test_case_id);`,
+  );
 
   // ---------- test_runs (history) ----------
   await pool.query(`

@@ -36,6 +36,7 @@ export function buildFillUserPrompt(params: {
 }): string {
   const blocks = params.targets.map((a) => {
     const sel = a.config.selector?.trim() ?? "";
+    const xp = a.config.xpath?.trim() ?? "";
     const cur = a.config.value !== undefined && a.config.value !== null ? String(a.config.value) : "";
     const hint = params.fieldHints?.get(a.id);
     let dom = "";
@@ -54,7 +55,8 @@ export function buildFillUserPrompt(params: {
     return (
       `- actionId: ${a.id}\n` +
       `  tên bước: ${a.name}\n` +
-      `  selector: ${sel}\n` +
+      (sel ? `  selector: ${sel}\n` : "") +
+      (xp ? `  xpath: ${xp}\n` : "") +
       `  expectation: ${a.expectation ?? ""}\n` +
       `  giá trị hiện tại: ${cur.trim() ? cur : "(trống)"}` +
       dom

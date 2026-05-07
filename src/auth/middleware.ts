@@ -14,6 +14,20 @@ declare global {
 
 export type { AuthPayload };
 
+/** Chỉ user có JWT role admin. Luôn dùng sau `requireAuth`. */
+export const requireAdmin: RequestHandler = (req, res, next) => {
+  const auth = req.auth;
+  if (!auth) {
+    res.status(401).json({ ok: false, error: "Cần đăng nhập." });
+    return;
+  }
+  if (auth.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Cần quyền quản trị viên." });
+    return;
+  }
+  next();
+};
+
 export const requireAuth: RequestHandler = (req, res, next) => {
   const raw = req.headers.authorization?.trim();
   if (!raw?.toLowerCase().startsWith("bearer ")) {

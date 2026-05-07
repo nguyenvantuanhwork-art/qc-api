@@ -3,10 +3,22 @@ import bcrypt from "bcryptjs";
 import { getPool } from "../db";
 import { signToken } from "./jwt";
 import { requireAuth } from "./middleware";
+import { loadAppSettings } from "../system/store";
 
 export const authRouter = Router();
 
 authRouter.post("/register", async (req, res) => {
+  const pool = getPool();
+  try {
+    const { registrationOpen } = await loadAppSettings(pool);
+    if (!registrationOpen) {
+      res.status(403).json({ ok: false, error: "Đăng ký đã được tắt bởi quản trị viên." });
+      return;
+    }
+  } catch {
+    /* nếu bảng chưa migrate, cho phép đăng ký */
+  }
+
   const body = req.body as { username?: unknown; password?: unknown };
   const usernameRaw = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
@@ -19,7 +31,6 @@ authRouter.post("/register", async (req, res) => {
     return;
   }
 
-  const pool = getPool();
   const hash = await bcrypt.hash(password, 10);
   try {
     const r = await pool.query<{ id: string; username: string; role: string }>(
@@ -90,4 +101,40 @@ authRouter.get("/me", requireAuth, async (req, res) => {
     return;
   }
   res.json({ ok: true, user: row });
+});
+
+authRouter.put("/password", requireAuth, async (req, res) => {
+  const auth = req.auth!;
+  const body = req.body as { currentPassword?: unknown; newPassword?: unknown };
+  const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ ok: false, error: "Thiếu mật khẩu hiện tại hoặc mới." });
+    return;
+  }
+  if (newPassword.length < 4) {
+    res.status(400).json({ ok: false, error: "Mật khẩu mới tối thiểu 4 ký tự." });
+    return;
+  }
+
+  const pool = getPool();
+  const r = await pool.query<{ password_hash: string }>(
+    `select password_hash from users where id = $1`,
+    [auth.userId],
+  );
+  const row = r.rows[0];
+  if (!row) {
+    res.status(401).json({ ok: false, error: "Tài khoản không còn tồn tại." });
+    return;
+  }
+  const okCur = await bcrypt.compare(currentPassword, row.password_hash);
+  if (!okCur) {
+    res.status(400).json({ ok: false, error: "Mật khẩu hiện tại không đúng." });
+    return;
+  }
+
+  const hash = await bcrypt.hash(newPassword, 10);
+  await pool.query(`update users set password_hash = $1 where id = $2`, [hash, auth.userId]);
+  res.json({ ok: true });
 });

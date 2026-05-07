@@ -11,9 +11,11 @@ const KINDS: ReadonlySet<string> = new Set([
   "click_text",
   "click_id",
   "click_name",
+  "click_xpath",
   "type",
   "type_id",
   "type_name",
+  "type_xpath",
   "wait",
 ]);
 
@@ -32,7 +34,7 @@ Schema bắt buộc:
   },
   "actions": [
     {
-      "kind": "navigate" | "click_selector" | "click_text" | "click_id" | "click_name" | "type" | "type_id" | "type_name" | "wait",
+      "kind": "navigate" | "click_selector" | "click_text" | "click_id" | "click_name" | "click_xpath" | "type" | "type_id" | "type_name" | "type_xpath" | "wait",
       "name": "string (tên bước ngắn, tiếng Việt nếu phù hợp)",
       "config": { ... },
       "expectation": "string tùy chọn — điều cần kiểm tra sau bước",
@@ -47,10 +49,12 @@ Quy tắc kind và config:
 - click_selector: config.selector (CSS), ví dụ button[type="submit"], #login-btn.
 - click_id: config.id (DOM id), ví dụ login-btn.
 - click_name: config.name (DOM attribute name="..."), ví dụ email.
+- click_xpath: config.xpath (XPath), ví dụ //*[@id="login-btn"] hoặc //button[contains(., "Đăng nhập")].
 - click_text: config.matchText — text hiển thị trên nút/link (không phân biệt hoa thường khi chạy).
 - type: config.selector và config.value (chuỗi gõ vào; dữ liệu test giả, không PII thật).
 - type_id: config.id và config.value.
 - type_name: config.name và config.value.
+- type_xpath: config.xpath và config.value.
 - wait: config.waitMs (số ms, 0–120000).
 
 Thứ tự actions phải là luồng hợp lý: thường bắt đầu bằng navigate nếu cần mở URL. Ít nhất 1 bước nếu có thể.
@@ -109,6 +113,8 @@ function coerceConfig(kind: ActionKind, raw: unknown): ActionConfig {
       return { id: typeof o.id === "string" ? o.id.trim() : "" };
     case "click_name":
       return { name: typeof o.name === "string" ? o.name.trim() : "" };
+    case "click_xpath":
+      return { xpath: typeof o.xpath === "string" ? o.xpath.trim() : "" };
     case "click_text":
       return { matchText: typeof o.matchText === "string" ? o.matchText.trim() : "" };
     case "type": {
@@ -135,6 +141,15 @@ function coerceConfig(kind: ActionKind, raw: unknown): ActionConfig {
       else if (o.value != null) value = String(o.value);
       return {
         name: typeof o.name === "string" ? o.name.trim() : "",
+        value,
+      };
+    }
+    case "type_xpath": {
+      let value = "";
+      if (typeof o.value === "string") value = o.value;
+      else if (o.value != null) value = String(o.value);
+      return {
+        xpath: typeof o.xpath === "string" ? o.xpath.trim() : "",
         value,
       };
     }

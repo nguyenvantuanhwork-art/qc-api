@@ -18,6 +18,7 @@ import { schedulesRouter } from "./schedules/router";
 import { startScheduleRunner } from "./schedules/worker";
 import { reportsRouter } from "./reports/router";
 import { notificationsRouter } from "./notifications/router";
+import { systemRouter } from "./system/router";
 
 // Luôn đọc `qc-api/.env` (không phụ thuộc cwd). `override: true` vì mặc định dotenv
 // không ghi đè biến đã có — trên Windows User env thường còn GEMINI_API_KEY cũ.
@@ -48,7 +49,11 @@ app.get("/", (_req, res) => {
       register: "POST /api/auth/register",
       login: "POST /api/auth/login",
       me: "GET /api/auth/me (Bearer)",
+      password: "PUT /api/auth/password (Bearer) body: currentPassword, newPassword",
     },
+    systemPublicConfig: "GET /api/system/public-config",
+    systemSettings:
+      "GET /api/system/settings (Bearer), PUT /api/system/settings (Bearer, admin) body: registrationOpen?, maintenanceBanner?",
     aiHealth: "/api/ai/health",
     aiChat: "POST /api/ai/chat (Bearer)",
     aiTestCaseFromPrompt:
@@ -72,6 +77,7 @@ app.get("/", (_req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/system", systemRouter);
 
 app.use("/api/test-cases/:testCaseId", testCaseRouter);
 app.use("/api/projects", projectsRouter);

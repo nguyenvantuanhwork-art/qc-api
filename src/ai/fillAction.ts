@@ -34,7 +34,9 @@ function resolveTargets(
     actionIdsFilter: Set<string> | null;
   },
 ): TestAction[] {
-  let targets = sorted.filter((a) => a.enabled && a.kind === "type");
+  let targets = sorted.filter(
+    (a) => a.enabled && (a.kind === "type" || a.kind === "type_id" || a.kind === "type_name" || a.kind === "type_xpath"),
+  );
   if (opts.actionIdsFilter) {
     targets = targets.filter((a) => opts.actionIdsFilter!.has(a.id));
   }
@@ -58,7 +60,12 @@ async function applyFills(
   for (const f of fills) {
     if (!allowedIds.has(f.actionId)) continue;
     const cur = byId.get(f.actionId);
-    if (!cur || cur.kind !== "type") continue;
+    if (
+      !cur ||
+      (cur.kind !== "type" && cur.kind !== "type_id" && cur.kind !== "type_name" && cur.kind !== "type_xpath")
+    ) {
+      continue;
+    }
     const { action, error } = await updateAction(testCaseId, f.actionId, {
       config: { ...cur.config, value: f.value },
     });

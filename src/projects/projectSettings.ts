@@ -10,6 +10,11 @@ export interface ResolvedProjectSettings {
     navigateTimeoutMs: number;
     waitStepMaxMs: number;
     screenshotPolicy: ScreenshotPolicy;
+    /**
+     * Khi false: chỉ chụp màn hình các bước thuộc testcase đang chạy (gốc),
+     * không chụp bước của gói/tiên quyết đã mở rộng phía trước (trừ policy vẫn áp dụng).
+     */
+    screenshotPrerequisiteSteps: boolean;
     headless: boolean;
     viewportWidth: number;
     viewportHeight: number;
@@ -27,6 +32,7 @@ const DEFAULTS: ResolvedProjectSettings = {
     navigateTimeoutMs: 60_000,
     waitStepMaxMs: 120_000,
     screenshotPolicy: "every_step",
+    screenshotPrerequisiteSteps: true,
     headless: true,
     viewportWidth: 1280,
     viewportHeight: 800,
@@ -72,6 +78,9 @@ export function mergeProjectSettings(raw: unknown): ResolvedProjectSettings {
     }
     if (r.screenshotPolicy === "every_step" || r.screenshotPolicy === "on_failure") {
       out.runner.screenshotPolicy = r.screenshotPolicy;
+    }
+    if (typeof r.screenshotPrerequisiteSteps === "boolean") {
+      out.runner.screenshotPrerequisiteSteps = r.screenshotPrerequisiteSteps;
     }
     if (typeof r.headless === "boolean") {
       out.runner.headless = r.headless;
@@ -145,6 +154,11 @@ export function mergePatchIntoStored(
         }
         next.runner.screenshotPolicy = r.screenshotPolicy;
       }
+      if ("screenshotPrerequisiteSteps" in r) {
+        if (typeof r.screenshotPrerequisiteSteps !== "boolean")
+          return { ok: false, error: "runner.screenshotPrerequisiteSteps phải boolean." };
+        next.runner.screenshotPrerequisiteSteps = r.screenshotPrerequisiteSteps;
+      }
       if ("headless" in r) {
         if (typeof r.headless !== "boolean") return { ok: false, error: "runner.headless phải boolean." };
         next.runner.headless = r.headless;
@@ -194,6 +208,8 @@ export function mergePatchIntoStored(
   if (dr.navigateTimeoutMs !== ddr.navigateTimeoutMs) runnerPart.navigateTimeoutMs = dr.navigateTimeoutMs;
   if (dr.waitStepMaxMs !== ddr.waitStepMaxMs) runnerPart.waitStepMaxMs = dr.waitStepMaxMs;
   if (dr.screenshotPolicy !== ddr.screenshotPolicy) runnerPart.screenshotPolicy = dr.screenshotPolicy;
+  if (dr.screenshotPrerequisiteSteps !== ddr.screenshotPrerequisiteSteps)
+    runnerPart.screenshotPrerequisiteSteps = dr.screenshotPrerequisiteSteps;
   if (dr.headless !== ddr.headless) runnerPart.headless = dr.headless;
   if (dr.viewportWidth !== ddr.viewportWidth) runnerPart.viewportWidth = dr.viewportWidth;
   if (dr.viewportHeight !== ddr.viewportHeight) runnerPart.viewportHeight = dr.viewportHeight;

@@ -63,6 +63,34 @@ async function waitElementByName(page: Page, name: string, timeout: number): Pro
   return el;
 }
 
+async function waitElementByXPath(page: Page, xpath: string, timeout: number): Promise<ElementHandle<Element>> {
+  const trimmed = xpath.trim();
+  const jsHandle = await page.waitForFunction(
+    (xp) => {
+      try {
+        const r = document.evaluate(
+          String(xp),
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null,
+        );
+        return r.singleNodeValue ?? null;
+      } catch {
+        return null;
+      }
+    },
+    { timeout },
+    trimmed,
+  );
+  const el = jsHandle.asElement() as ElementHandle<Element> | null;
+  if (!el) {
+    await jsHandle.dispose();
+    throw new Error(`Không tìm thấy phần tử theo xpath="${trimmed}"`);
+  }
+  return el;
+}
+
 /** Chuẩn hoá URL navigate: URL tuyệt đối hoặc ghép với defaultBaseUrl của dự án. */
 export function resolveNavigateUrl(url: string, defaultBaseUrl: string): string {
   const u = url.trim();
@@ -170,6 +198,16 @@ export async function runStepOnPage(
       }
       return;
     }
+    case "click_xpath": {
+      const xp = config.xpath!.trim();
+      const handle = await waitElementByXPath(page, xp, stepTimeout);
+      try {
+        await clickElementSequential(page, handle);
+      } finally {
+        await handle.dispose();
+      }
+      return;
+    }
     case "type": {
       const sel = config.selector!.trim();
       const handle = await page.waitForSelector(sel, { visible: true, timeout: stepTimeout });
@@ -206,6 +244,17 @@ export async function runStepOnPage(
       }
       return;
     }
+    case "type_xpath": {
+      const xp = config.xpath!.trim();
+      const handle = await waitElementByXPath(page, xp, stepTimeout);
+      try {
+        await tripleClickToSelectAll(page, handle);
+        await handle.type(String(config.value), { delay: 25 });
+      } finally {
+        await handle.dispose();
+      }
+      return;
+    }
     default:
       throw new Error(`Chưa hỗ trợ kind: ${kind}`);
   }
@@ -214,7 +263,20 @@ export async function runStepOnPage(
 export type RunTestActionsOptions = {
   signal?: AbortSignal;
   onProgress?: (p: { stepOrdinal: number; totalSteps: number; action: TestAction }) => void;
+  /** Test case đang chạy (gốc). Khi có, dùng với `screenshotPrerequisiteSteps` để bỏ qua ảnh bước tiên quyết nếu cài đặt tắt. */
+  runRootTestCaseId?: string;
 };
+
+function shouldAttachScreenshotForAction(
+  action: TestAction,
+  rootTestCaseId: string | undefined,
+  capturePrerequisiteStepScreenshots: boolean,
+): boolean {
+  const root = rootTestCaseId?.trim();
+  if (!root) return true;
+  if (capturePrerequisiteStepScreenshots) return true;
+  return action.testCaseId === root;
+}
 
 function buildCancelledResult(
   sorted: TestAction[],
@@ -248,6 +310,8 @@ export async function runTestActions(
   const steps: RunStepResult[] = [];
   const signal = options?.signal;
   const totalSteps = sorted.length;
+  const rootRunId = options?.runRootTestCaseId?.trim() || undefined;
+  const capturePrereqShots = runner.screenshotPrerequisiteSteps;
 
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
   let page: Page | undefined;
@@ -292,7 +356,10 @@ export async function runTestActions(
         }
         await runStepOnPage(page, action, runner);
         let screenshotBase64: string | undefined;
-        if (runner.screenshotPolicy === "every_step") {
+        if (
+          runner.screenshotPolicy === "every_step" &&
+          shouldAttachScreenshotForAction(action, rootRunId, capturePrereqShots)
+        ) {
           const shot = await page.screenshot({ type: "png", fullPage: false });
           screenshotBase64 = Buffer.from(shot).toString("base64");
         }
@@ -309,11 +376,13 @@ export async function runTestActions(
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         let shotB64: string | undefined;
-        try {
-          const shot = await page.screenshot({ type: "png", fullPage: false });
-          shotB64 = Buffer.from(shot).toString("base64");
-        } catch {
-          /* bỏ qua nếu không chụp được */
+        if (shouldAttachScreenshotForAction(action, rootRunId, capturePrereqShots)) {
+          try {
+            const shot = await page.screenshot({ type: "png", fullPage: false });
+            shotB64 = Buffer.from(shot).toString("base64");
+          } catch {
+            /* bỏ qua nếu không chụp được */
+          }
         }
         steps.push({
           actionId: action.id,

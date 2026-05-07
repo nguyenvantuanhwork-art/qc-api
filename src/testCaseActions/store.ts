@@ -13,6 +13,8 @@ export function validateConfig(kind: ActionKind, config: ActionConfig): string |
       return config.id?.trim() ? null : "click_id cần config.id";
     case "click_name":
       return config.name?.trim() ? null : "click_name cần config.name";
+    case "click_xpath":
+      return config.xpath?.trim() ? null : "click_xpath cần config.xpath";
     case "type":
       if (!config.selector?.trim()) return "type cần config.selector";
       if (config.value === undefined || config.value === null) return "type cần config.value";
@@ -24,6 +26,10 @@ export function validateConfig(kind: ActionKind, config: ActionConfig): string |
     case "type_name":
       if (!config.name?.trim()) return "type_name cần config.name";
       if (config.value === undefined || config.value === null) return "type_name cần config.value";
+      return null;
+    case "type_xpath":
+      if (!config.xpath?.trim()) return "type_xpath cần config.xpath";
+      if (config.value === undefined || config.value === null) return "type_xpath cần config.value";
       return null;
     case "wait":
       if (config.waitMs === undefined || config.waitMs === null) return "wait cần config.waitMs";

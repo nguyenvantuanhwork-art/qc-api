@@ -6,7 +6,8 @@ import { mergeProjectSettings } from "../projects/projectSettings";
 
 export type FieldHint = {
   actionId: string;
-  selector: string;
+  selector?: string;
+  xpath?: string;
   pageUrl?: string;
   tagName?: string;
   inputType?: string;
@@ -34,64 +35,106 @@ export async function collectFieldHintsForActions(
   for (const action of sorted) {
     if (!action.enabled) continue;
 
-    if (action.kind === "type" && targetIds.has(action.id)) {
+    if ((action.kind === "type" || action.kind === "type_xpath") && targetIds.has(action.id)) {
       const sel = action.config.selector?.trim() ?? "";
-      if (!sel) {
-        out.set(action.id, {
-          actionId: action.id,
-          selector: sel,
-          pageUrl: page.url(),
-          domError: "Thiếu selector",
-        });
+      const xp = action.config.xpath?.trim() ?? "";
+
+      if (action.kind === "type" && !sel) {
+        out.set(action.id, { actionId: action.id, selector: sel, pageUrl: page.url(), domError: "Thiếu selector" });
         continue;
       }
+      if (action.kind === "type_xpath" && !xp) {
+        out.set(action.id, { actionId: action.id, xpath: xp, pageUrl: page.url(), domError: "Thiếu xpath" });
+        continue;
+      }
+
       try {
-        await page.waitForSelector(sel, { visible: true, timeout: runner.defaultStepTimeoutMs });
-        const snap = await page.evaluate((selector) => {
-          const el = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement | null;
-          if (!el) return null;
-          const labels: string[] = [];
-          const fid = el.id;
-          if (fid) {
-            document.querySelectorAll("label").forEach((l) => {
-              if (l.getAttribute("for") === fid) {
-                labels.push((l.textContent ?? "").replace(/\s+/g, " ").trim());
+        if (action.kind === "type") {
+          await page.waitForSelector(sel, { visible: true, timeout: runner.defaultStepTimeoutMs });
+        } else {
+          await page.waitForFunction(
+            (xpath) => {
+              try {
+                const r = document.evaluate(
+                  String(xpath),
+                  document,
+                  null,
+                  XPathResult.FIRST_ORDERED_NODE_TYPE,
+                  null,
+                );
+                return r.singleNodeValue ?? null;
+              } catch {
+                return null;
               }
-            });
-          }
-          let parent: HTMLElement | null = el.parentElement;
-          for (let i = 0; i < 3 && parent; i++, parent = parent.parentElement) {
-            const lab = parent.querySelector(":scope > label");
-            if (lab) labels.push((lab.textContent ?? "").replace(/\s+/g, " ").trim());
-          }
-          return {
-            tagName: el.tagName.toLowerCase(),
-            inputType:
-              el instanceof HTMLInputElement
-                ? el.type
-                : el instanceof HTMLTextAreaElement
-                  ? "textarea"
-                  : "",
-            htmlName: el.getAttribute("name") ?? undefined,
-            id: el.id || undefined,
-            placeholder: el.getAttribute("placeholder") ?? undefined,
-            ariaLabel: el.getAttribute("aria-label") ?? undefined,
-            autocomplete: el.getAttribute("autocomplete") ?? undefined,
-            labelsText: labels.filter(Boolean).join(" | ") || undefined,
-          };
-        }, sel);
+            },
+            { timeout: runner.defaultStepTimeoutMs },
+            xp,
+          );
+        }
+
+        const snap = await page.evaluate(
+          (params) => {
+            const { selector, xpath } = params as { selector?: string; xpath?: string };
+            const bySelector = (s: string): Element | null => document.querySelector(s);
+            const byXpath = (x: string): Element | null => {
+              try {
+                const r = document.evaluate(x, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                return (r.singleNodeValue as Element | null) ?? null;
+              } catch {
+                return null;
+              }
+            };
+            const el =
+              selector && selector.trim()
+                ? (bySelector(selector) as HTMLInputElement | HTMLTextAreaElement | null)
+                : xpath && xpath.trim()
+                  ? (byXpath(xpath) as HTMLInputElement | HTMLTextAreaElement | null)
+                  : null;
+            if (!el) return null;
+            const labels: string[] = [];
+            const fid = (el as HTMLElement).id;
+            if (fid) {
+              document.querySelectorAll("label").forEach((l) => {
+                if (l.getAttribute("for") === fid) {
+                  labels.push((l.textContent ?? "").replace(/\s+/g, " ").trim());
+                }
+              });
+            }
+            let parent: HTMLElement | null = (el as HTMLElement).parentElement;
+            for (let i = 0; i < 3 && parent; i++, parent = parent.parentElement) {
+              const lab = parent.querySelector(":scope > label");
+              if (lab) labels.push((lab.textContent ?? "").replace(/\s+/g, " ").trim());
+            }
+            return {
+              tagName: el.tagName.toLowerCase(),
+              inputType:
+                el instanceof HTMLInputElement
+                  ? el.type
+                  : el instanceof HTMLTextAreaElement
+                    ? "textarea"
+                    : "",
+              htmlName: el.getAttribute("name") ?? undefined,
+              id: (el as HTMLElement).id || undefined,
+              placeholder: el.getAttribute("placeholder") ?? undefined,
+              ariaLabel: el.getAttribute("aria-label") ?? undefined,
+              autocomplete: el.getAttribute("autocomplete") ?? undefined,
+              labelsText: labels.filter(Boolean).join(" | ") || undefined,
+            };
+          },
+          { selector: sel, xpath: xp },
+        );
 
         if (snap) {
           out.set(action.id, {
             actionId: action.id,
-            selector: sel,
+            ...(action.kind === "type" ? { selector: sel } : { xpath: xp }),
             pageUrl: page.url(),
             ...snap,
           });
         } else {
           out.set(action.id, {
             actionId: action.id,
-            selector: sel,
+            ...(action.kind === "type" ? { selector: sel } : { xpath: xp }),
             pageUrl: page.url(),
             domError: "Không tìm thấy phần tử trong document",
           });
@@ -99,7 +142,7 @@ export async function collectFieldHintsForActions(
       } catch (e) {
         out.set(action.id, {
           actionId: action.id,
-          selector: sel,
+          ...(action.kind === "type" ? { selector: sel } : { xpath: xp }),
           pageUrl: page.url(),
           domError: e instanceof Error ? e.message : String(e),
         });

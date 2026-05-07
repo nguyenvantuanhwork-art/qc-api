@@ -1,5 +1,5 @@
 import { getPool } from "../db";
-import { listActions } from "./store";
+import { listExpandedActionsForRun } from "../testCasePrerequisites/expandForRun";
 import { runTestActions } from "./runner";
 import type { RunTestCaseResult } from "./types";
 import { insertTestRun } from "../testRuns/store";
@@ -59,7 +59,7 @@ export async function executeTestCaseRun(
     }
   }
 
-  const actionsList = await listActions(testCaseId);
+  const actionsList = await listExpandedActionsForRun(testCaseId);
   if (actionsList.length === 0) {
     return { ok: false, error: "Chưa có hành động nào để chạy." };
   }
@@ -86,6 +86,7 @@ export async function executeTestCaseRun(
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       result = await runTestActions(actionsList, projectSettings, {
         signal: abortController.signal,
+        runRootTestCaseId: testCaseId,
         onProgress: ({ stepOrdinal, totalSteps, action }) => {
           updateActiveRunProgress(testCaseId, {
             stepOrdinal,
@@ -95,6 +96,7 @@ export async function executeTestCaseRun(
           });
         },
       });
+      result = { ...result, testCaseId };
       if (result.cancelled) break;
       if (result.ok) break;
     }
